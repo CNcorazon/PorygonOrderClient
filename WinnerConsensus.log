@@ -1,0 +1,3 @@
+重分片时间:974.051523ms, witness:7.109151426s,consensus:4.133912141s,downloadtx:3.047741614s,uploadtx:3.058931289s,downloadproposals:211.957637ms
+重分片时间:1.014490962s, witness:7.087677032s,consensus:4.228115698s,downloadtx:3.053171272s,uploadtx:3.031385608s,downloadproposals:302.990546ms
+重分片时间:1.032378443s, witness:7.058285625s,consensus:4.289461874s,downloadtx:3.035084172s,uploadtx:3.021045272s,downloadproposals:356.660357ms
