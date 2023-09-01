@@ -16,9 +16,9 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// 返回值分别表示本次被分配到的分片，以及Ws连接是否成功，还有HTTP连接是否成功
-func ShardRequest(httpurl string, route string) (uint, bool, bool) {
-	URL := httpurl + route
+// ShardRequest 返回值分别表示本次被分配到的分片，以及Ws连接是否成功，还有HTTP连接是否成功
+func ShardRequest(httpUrl string, route string) (uint, bool, bool) {
+	URL := httpUrl + route
 	request, _ := http.NewRequest("GET", URL, nil)
 	client := &http.Client{}
 	response, err := client.Do(request)
@@ -28,7 +28,10 @@ func ShardRequest(httpurl string, route string) (uint, bool, bool) {
 	}
 	body, _ := ioutil.ReadAll(response.Body)
 	var res model.ShardNumResponse
-	json.Unmarshal(body, &res)
+	err = json.Unmarshal(body, &res)
+	if err != nil {
+		return 0, false, false
+	}
 	shardNum := res.ShardNum
 	if shardNum == 0 {
 		return shardNum, false, true
@@ -36,9 +39,9 @@ func ShardRequest(httpurl string, route string) (uint, bool, bool) {
 	return shardNum, true, true
 }
 
-func HeightRequest(httpurl string, route string) int {
+func HeightRequest(httpUrl string, route string) int {
 	// strShard := strconv.Itoa(int(shardnum))
-	URL := httpurl + route
+	URL := httpUrl + route
 	request, _ := http.NewRequest("GET", URL, nil)
 	client := &http.Client{}
 	response, _ := client.Do(request)
@@ -56,9 +59,9 @@ func HeightRequest(httpurl string, route string) int {
 func RegisterWSRequest(wsurl string, route string) *websocket.Conn {
 	rand.Seed(time.Now().UnixNano())
 	// str := strconv.Itoa(int(shardnum))
-	Random := rand.Intn(1000)
-	strRand := strconv.Itoa(Random)
-	URL := wsurl + route + "/" + strRand
+	//Random := rand.Intn(1000)
+	//strRand := strconv.Itoa(Random)
+	URL := wsurl + route
 	var dialer *websocket.Dialer
 	conn, _, err := dialer.Dial(URL, nil)
 

@@ -1,1 +1,17 @@
-package main
+version: '3'
+services:
+  order:
+    image: order-image
+    deploy:
+      mode: replicated
+      replicas: 100
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 500M
+    networks:
+      - order-network
+
+networks:
+  order-network:
+    driver: bridge

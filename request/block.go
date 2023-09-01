@@ -71,11 +71,11 @@ import (
 	return res
 }*/
 
-func RequestTransaction(shardNum uint, url string, route string, id string) []structure.Proposal {
+func RequestTransaction(shardNum uint, url string, route string) []structure.Proposal {
 	URL := url + route
 	data := model.BlockTransactionRequest{
 		Shard: shardNum,
-		Id:    id,
+		//Id:    id,
 	}
 	jsonData, err := json.Marshal(data)
 	if err != nil {
@@ -99,14 +99,9 @@ func RequestTransaction(shardNum uint, url string, route string, id string) []st
 	return res
 }
 
-func MultiCastProposal(shardnum uint, httpurl string, route string, pro structure.Proposal, id string) model.MultiCastBlockResponse {
+func MultiCastProposal(httpurl string, route string, pro structure.ProposalBlock) model.MultiCastBlockResponse {
 	URL := httpurl + route
-	data := model.MultiCastProposalRequest{
-		Shard:    shardnum,
-		Id:       id,
-		Proposal: pro,
-	}
-	jsonData, err := json.Marshal(data)
+	jsonData, err := json.Marshal(pro)
 	if err != nil {
 		log.Println(err)
 	}
@@ -128,6 +123,7 @@ func MultiCastProposal(shardnum uint, httpurl string, route string, pro structur
 	json.Unmarshal(body, &res)
 	return res
 }
+
 func RequestAccount(shardNum uint, url string, route string) model.BlockAccountResponse {
 	URL := url + route
 	data := model.BlockAccountRequest{
@@ -155,18 +151,9 @@ func RequestAccount(shardNum uint, url string, route string) model.BlockAccountR
 	return res
 }
 
-func UploadBlock(shardNum uint, block structure.Block, id string, url string, route string) model.BlockUploadResponse {
+func UploadLeaderProblock(url string, route string, pro structure.ProposalBlock) model.BlockUploadResponse {
 	URL := url + route
-	data := model.BlockUploadRequest{
-		Shard:  shardNum,
-		Height: block.Header.Height,
-		Id:     id,
-		Block:  block,
-		// ReLayList: block.Body.SuperTransaction.SuperList,
-	}
-	jsonData, err := json.Marshal(data)
-	// logger.BandWidthLogger.Println(unsafe.Sizeof(jsonData))
-
+	jsonData, err := json.Marshal(pro)
 	if err != nil {
 		log.Println(err)
 	}
@@ -177,16 +164,48 @@ func UploadBlock(shardNum uint, block structure.Block, id string, url string, ro
 	if err != nil {
 		panic(err)
 	}
+
 	body, _ := ioutil.ReadAll(response.Body)
-
-	// 带宽
-	logger.UBandWidthLogger.Println(len(jsonData))
-	logger.BandWidthLogger.Println(len(body))
-
+	// 处理 body
+	// 处理 body
 	var res model.BlockUploadResponse
 	json.Unmarshal(body, &res)
 	return res
+
 }
+
+//func UploadBlock(shardNum uint, block structure.Block, id string, url string, route string) model.BlockUploadResponse {
+//	URL := url + route
+//	data := model.BlockUploadRequest{
+//		Shard:  shardNum,
+//		Height: block.Header.Height,
+//		Id:     id,
+//		Block:  block,
+//		// ReLayList: block.Body.SuperTransaction.SuperList,
+//	}
+//	jsonData, err := json.Marshal(data)
+//	// logger.BandWidthLogger.Println(unsafe.Sizeof(jsonData))
+//
+//	if err != nil {
+//		log.Println(err)
+//	}
+//	request, _ := http.NewRequest("POST", URL, bytes.NewBuffer(jsonData))
+//	request.Header.Set("Content-Type", "application/json")
+//	client := &http.Client{}
+//	response, err := client.Do(request)
+//	if err != nil {
+//		panic(err)
+//	}
+//	body, _ := ioutil.ReadAll(response.Body)
+//
+//	// 带宽
+//	logger.UBandWidthLogger.Println(len(jsonData))
+//	logger.BandWidthLogger.Println(len(body))
+//
+//	var res model.BlockUploadResponse
+//	json.Unmarshal(body, &res)
+//	return res
+//}
 
 // 请求已见证过的交易，进行验证
 func RequestBlock(shardNum uint, url string, route string) model.BlockTransactionResponse {

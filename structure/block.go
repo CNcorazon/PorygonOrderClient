@@ -14,12 +14,24 @@ type (
 		Body   BlockBody
 	}
 
+	// Proposal 共识阶段：单个分片内打包的交易列表
 	Proposal struct {
 		Shard         uint
 		Height        uint
 		InternalBatch []TransactionBatch
 		CrossBatch    []TransactionBatch
 		SuperBatch    []TransactionBatch
+	}
+
+	// ProposalBlock 共识阶段：排序委员会提出的proposal block
+	ProposalBlock struct {
+		Id           string
+		IdList       []string
+		Height       int
+		Hash         string     //前一个区块的hash
+		Root         GSRoot     //状态树树根
+		ProposalList []Proposal //交易列表
+		Vrf          int        //vrf
 	}
 
 	Root        string

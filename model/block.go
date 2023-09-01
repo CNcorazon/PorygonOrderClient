@@ -7,13 +7,14 @@ import (
 type (
 	BlockTransactionRequest struct {
 		Shard uint
-		Id    string
+		//Id    string
 	}
 
 	MultiCastProposalRequest struct {
-		Shard    uint
-		Id       string
-		Proposal structure.Proposal
+		Shard         uint
+		Id            string
+		IdList        []string
+		ProposalBlock structure.ProposalBlock
 	}
 
 	MultiCastProposalResponse struct {
@@ -42,6 +43,7 @@ type (
 		Shard  uint
 		Height uint
 	}
+
 	BlockAccountRequest struct {
 		Shard uint
 	}
@@ -111,6 +113,10 @@ type (
 	RootUploadResponse struct {
 		// Shard   uint
 		Height  uint
+		Message string
+	}
+
+	CommonResponse struct {
 		Message string
 	}
 )

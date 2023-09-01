@@ -8,7 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"horizon/logger"
+	"horizon/Utils"
 	"horizon/model"
 	"horizon/request"
 	"horizon/structure"
@@ -54,8 +54,8 @@ const (
 	// WSURL             = "ws://http://172.18.166.60:8800"
 	blockTransaction    = "/block/transaction"
 	blockAccount        = "/block/account"
-	blockUpload         = "/block/upload"
 	blockUploadProposal = "/block/uploadproposal"
+	blockUploadLeader   = "/block/uploadleader"
 	// blockWitness      = "/block/witness"
 	// blockWitness_2    = "/block/witness_2"
 	// blockTxValidation = "/block/validate"
@@ -73,9 +73,17 @@ const (
 func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
+	var (
+		heightOld int
+		heightNew int
+	)
 	for {
+		heightNew = request.HeightRequest(HTTPURL, heightNum)
+		if heightNew == heightOld && heightNew != 0 {
+			log.Println(heightNew, heightOld)
+			continue
+		}
 		log.Printf("申请加入系统")
-		start := time.Now()
 		// 加入随机性
 		RandomSleep(1000)
 		// 发起请求获取当前可以加入的shard
@@ -83,6 +91,7 @@ func main() {
 		if !flag2 {
 			log.Printf("服务器尚未开启")
 			time.Sleep(1 * time.Second)
+			continue
 		}
 
 		if !flag1 {
@@ -97,166 +106,200 @@ func main() {
 
 		log.Println("---------------开始登记节点信息---------------")
 		conn := request.RegisterWSRequest(WSURL, register)
-		ReshardTime := time.Since(start)
 		// conn为空表示共识委员会已满
 		if conn == nil {
 			time.Sleep(5 * time.Second)
 			continue
 		}
 		log.Println("登记完成")
-		var id, winid string
-		var shard uint
-		var winflag bool
-		var consensus_flag bool
-		var metamessage model.MessageMetaData
-		// 根据传来的消息获取本客户端的Id和本轮的胜者id
-		conn.ReadJSON(&metamessage)
-		if metamessage.MessageType == 1 {
-			logger.BandWidthLogger.Println(len(metamessage.Message))
-			var iswin model.MessageIsWin
-			err := json.Unmarshal(metamessage.Message, &iswin)
+		var (
+			metaMessage  model.MessageMetaData
+			idList       []string
+			id           string
+			proBlockList []structure.ProposalBlock
+		)
+		for {
+			err := conn.ReadJSON(&metaMessage)
 			if err != nil {
-				log.Printf("err")
-				return
+				fmt.Println(err)
+				break
 			}
-			consensus_flag = iswin.IsConsensus
-			winflag = iswin.IsWin
-			id = iswin.PersonalID
-			winid = iswin.WinID
-			shard = uint(iswin.Shardnum)
+
+			if metaMessage.MessageType == 0 {
+				var idMsg model.MessageReady
+				err := json.Unmarshal(metaMessage.Message, &idMsg)
+				if err != nil {
+					log.Printf("err")
+					break
+				}
+				id = idMsg.PersonalID
+				idList = idMsg.IdList
+				shard := uint(0)
+				log.Println("---------------开始共识---------------")
+				log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（40000/2000 * SHARDNUM =200个）+公钥索引（每个分片节点数量*shardnum）），生成proposal---------------")
+				// pub, _ := ioutil.ReadFile("ec-pub.pem")
+				// 共识委员会下载交易，生成proposal
+				proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction) // 764bytes * 19
+				accList := request.RequestAccount(shard, HTTPURL, blockAccount)          // 56300bytes/100accounts
+				/* 附上其他信息*/
+				Random := rand.Intn(100000)
+				proposalBlock := structure.ProposalBlock{
+					Id:     id,
+					IdList: idList,
+					Height: int(proposal[0].Height),
+					//Hash: ,
+					Vrf:          Random,
+					Root:         accList.GSRoot,
+					ProposalList: proposal,
+				}
+				/* 结束 */
+				request.MultiCastProposal(HTTPURL, blockUploadProposal, proposalBlock)
+			}
+			if metaMessage.MessageType == 11 {
+				var proBlock structure.ProposalBlock
+				err := json.Unmarshal(metaMessage.Message, &proBlock)
+				if err != nil {
+					log.Printf("err")
+					break
+				}
+				proBlockList = append(proBlockList, proBlock)
+			}
+			if len(proBlockList) == len(idList) {
+				heightOld = request.HeightRequest(HTTPURL, heightNum)
+				LeaderProblock := Utils.FindLeader(proBlockList)
+				res := request.UploadLeaderProblock(HTTPURL, blockUploadLeader, LeaderProblock)
+				log.Println(res)
+				break
+			}
+		}
+		err := conn.Close()
+		if err != nil {
+			continue
 		}
 
-		// 进行区块共识
-		if consensus_flag && winflag {
-			log.Println("---------------开始共识---------------")
-			log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（40000/2000 * SHARDNUM =200个）+公钥索引（每个分片节点数量*shardnum）），生成proposal---------------")
-			consensusstart := time.Now()
-			// pub, _ := ioutil.ReadFile("ec-pub.pem")
-			// 共识委员会下载交易，生成proposal
-			Proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction, id) // 764bytes * 19
-			time.Sleep(1 * time.Second)
-			/* proposal签名 */
-			// list2marshal := structure.TransactionBlock{
-			// 	// Id:             id,
-			// 	Height:         txlist.Height,
-			// 	InternalList:   txlist.InternalList,
-			// 	CrossShardList: txlist.CrossShardList,
-			// 	SuperList:      txlist.RelayList,
-			// }
-			// jsonString, _ := json.Marshal(list2marshal)
-			// hash := sha256.Sum256(jsonString)
-			// sign := witness(hash[:], pub)
-			// txlist.Sign = sign
-			/* 结束 */
-
-			// 广播proposal
-			request.MultiCastProposal(shard, HTTPURL, blockUploadProposal, Proposal[0], id)
-			time.Sleep(1 * time.Second)
-			/*
-				应该用websocket接受广播的信息，这边直接下载代替
-			*/
-			Proposals := request.RequestTransaction(0, HTTPURL, blockTransaction, id) // 764bytes * 19
-			time.Sleep(2 * time.Second)
-
-			log.Println("---------------获胜者下载其他相关信息，生成区块以进行BBA共识---------------")
-			// 请求账户的状态
-			// 和各分片树根签名 accList.GSRoot
-			accList := request.RequestAccount(0, HTTPURL, blockAccount) // 56300bytes/100accounts
-			time.Sleep(536 * time.Millisecond)
-			state := structure.MakeStateWithAccount(0, accList.AccountList, accList.GSRoot)
-			// 验证树根签名
-			time.Sleep(time.Duration(structure.NodeNum*structure.SIGN_VERIFY_TIME*structure.ShardNum) * time.Microsecond / structure.CORE)
-			newBlock := structure.MakeBlock(Proposals, state, Proposals[0].Height, accList.GSRoot)
-
-			log.Println("---------------获胜者BBA---------------")
-			/* 本应该是所有委员会成员上传相同的block，即request.SendVote,由服务器收集到足够多的投票数即可完成共识。（待实现）*/
-			// 这边改成由leader收集投票，上传最终的block，完成共识。
-			blockPointer := &newBlock
-			// 用这个模拟收集投票的过程
-			RandomSleep(3000)
-			blockPointer.Header.Vote = blockPointer.Header.Vote + uint(structure.ProposerNum) - 1
-			finalBlock := *blockPointer
-			res1 := request.UploadBlock(0, finalBlock, winid, HTTPURL, blockUpload) //1136bytes
-			time.Sleep(1 * time.Millisecond)
-			consensustime := time.Since(consensusstart)
-			log.Println("---------------共识结束--------------")
-			log.Printf("分片%v%v,当前链的高度为%v", res1.Shard, res1.Message, res1.Height)
-			str := fmt.Sprintf("重分片时间:%v,consensus:%v", ReshardTime, consensustime)
-			//写入文件
-			dstFile, err := os.OpenFile("/Users/xiading/Library/Mobile Documents/com~apple~CloudDocs/学习/中山大学/论文代码/go-project/WinnerConsensus.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-			defer dstFile.Close()
-			dstFile.WriteString(str + "\n")
-			time.Sleep(2 * time.Second)
-		} else if consensus_flag && !winflag {
-			log.Println("---------------开始共识---------------")
-			log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（90000/2000=45个）+公钥索引（45*每个分片节点数量）），生成proposal---------------")
-			consensusstart := time.Now()
-			// pub, _ := ioutil.ReadFile("ec-pub.pem")
-			// 共识委员会下载交易，生成proposal
-			Proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction, id) // 764bytes * 19
-			time.Sleep(1 * time.Second)
-			/* proposal签名 */
-			// list2marshal := structure.TransactionBlock{
-			// 	// Id:             id,
-			// 	Height:         txlist.Height,
-			// 	InternalList:   txlist.InternalList,
-			// 	CrossShardList: txlist.CrossShardList,
-			// 	SuperList:      txlist.RelayList,
-			// }
-			// jsonString, _ := json.Marshal(list2marshal)
-			// hash := sha256.Sum256(jsonString)
-			// sign := witness(hash[:], pub)
-			// txlist.Sign = sign
-			/* 结束 */
-
-			// 广播proposal
-			request.MultiCastProposal(shard, HTTPURL, blockUploadProposal, Proposal[0], id)
-			time.Sleep(1 * time.Second)
-			/*
-				应该用websocket接受广播的信息，这边直接下载代替
-			*/
-			Proposals := request.RequestTransaction(0, HTTPURL, blockTransaction, id) // 764bytes * 19
-			time.Sleep(2 * time.Second)
-
-			log.Println("---------------获胜者下载其他相关信息，生成区块以进行BBA共识---------------")
-			// 请求账户的状态
-			// 和各分片树根签名 accList.GSRoot
-			accList := request.RequestAccount(0, HTTPURL, blockAccount) // 56300bytes/100accounts
-			time.Sleep(536 * time.Millisecond)
-			state := structure.MakeStateWithAccount(0, accList.AccountList, accList.GSRoot)
-			// 验证树根签名
-			time.Sleep(time.Duration(structure.NodeNum*structure.SIGN_VERIFY_TIME*structure.ShardNum) * time.Microsecond / structure.CORE)
-			newBlock := structure.MakeBlock(Proposals, state, Proposals[0].Height, accList.GSRoot)
-
-			log.Println("---------------非获胜者BBA---------------")
-			/* 本应该是所有委员会成员上传相同的block，即request.SendVote,由服务器收集到足够多的投票数即可完成共识。（待实现）*/
-			// 这边改成向leader投票，完成共识。
-			RandomSleep(3000)
-			resp := request.SendVote(shard, int(newBlock.Header.Height), winid, id, true, HTTPURL, sendtvote)
-			log.Println(resp.Message)
-			consensustime := time.Since(consensusstart)
-			log.Println("---------------共识结束--------------")
-			str := fmt.Sprintf("重分片时间:%v, consensus:%v", ReshardTime, consensustime)
-			//写入文件
-			dstFile, err := os.OpenFile("/Users/xiading/Library/Mobile Documents/com~apple~CloudDocs/学习/中山大学/论文代码/go-project/ProposerConsensus.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-			defer dstFile.Close()
-			dstFile.WriteString(str + "\n")
-			time.Sleep(2 * time.Second)
-		}
-		conn.Close()
-		// rand.Seed(time.Now().UnixNano())
-		// Random1 := rand.Intn(5000)
-		// time.Sleep(time.Duration(Random1) * time.Millisecond)
+		//time.Sleep(1 * time.Second)
 	}
 }
+
+// 进行区块共识
+//	if consensus_flag && winflag {
+//		log.Println("---------------开始共识---------------")
+//		log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（40000/2000 * SHARDNUM =200个）+公钥索引（每个分片节点数量*shardnum）），生成proposal---------------")
+//		consensusstart := time.Now()
+//		// pub, _ := ioutil.ReadFile("ec-pub.pem")
+//		// 共识委员会下载交易，生成proposal
+//		Proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction, id) // 764bytes * 19
+//		time.Sleep(1 * time.Second)
+//		/* proposal签名 */
+//
+//		/* 结束 */
+//
+//		// 广播proposal
+//		request.MultiCastProposal(shard, HTTPURL, blockUploadProposal, Proposal[0], id)
+//		time.Sleep(1 * time.Second)
+//		/*
+//			应该用websocket接受广播的信息，这边直接下载代替
+//		*/
+//		Proposals := request.RequestTransaction(0, HTTPURL, blockTransaction, id) // 764bytes * 19
+//		time.Sleep(2 * time.Second)
+//
+//		log.Println("---------------获胜者下载其他相关信息，生成区块以进行BBA共识---------------")
+//		// 请求账户的状态
+//		// 和各分片树根签名 accList.GSRoot
+//		accList := request.RequestAccount(0, HTTPURL, blockAccount) // 56300bytes/100accounts
+//		time.Sleep(536 * time.Millisecond)
+//		state := structure.MakeStateWithAccount(0, accList.AccountList, accList.GSRoot)
+//		// 验证树根签名
+//		time.Sleep(time.Duration(structure.NodeNum*structure.SIGN_VERIFY_TIME*structure.ShardNum) * time.Microsecond / structure.CORE)
+//newBlock := structure.MakeBlock(Proposals, state, Proposals[0].Height, accList.GSRoot)
+//
+//		log.Println("---------------获胜者BBA---------------")
+//		/* 本应该是所有委员会成员上传相同的block，即request.SendVote,由服务器收集到足够多的投票数即可完成共识。（待实现）*/
+//		// 这边改成由leader收集投票，上传最终的block，完成共识。
+//		blockPointer := &newBlock
+//		// 用这个模拟收集投票的过程
+//		RandomSleep(3000)
+//		blockPointer.Header.Vote = blockPointer.Header.Vote + uint(structure.ProposerNum) - 1
+//		finalBlock := *blockPointer
+//		res1 := request.UploadBlock(0, finalBlock, winid, HTTPURL, blockUpload) //1136bytes
+//		time.Sleep(1 * time.Millisecond)
+//		consensustime := time.Since(consensusstart)
+//		log.Println("---------------共识结束--------------")
+//		log.Printf("分片%v%v,当前链的高度为%v", res1.Shard, res1.Message, res1.Height)
+//		str := fmt.Sprintf("重分片时间:%v,consensus:%v", reShardTime, consensustime)
+//		//写入文件
+//		dstFile, err := os.OpenFile("/Users/xiading/Library/Mobile Documents/com~apple~CloudDocs/学习/中山大学/论文代码/go-project/WinnerConsensus.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+//		if err != nil {
+//			fmt.Println(err.Error())
+//			return
+//		}
+//		defer dstFile.Close()
+//		dstFile.WriteString(str + "\n")
+//		time.Sleep(2 * time.Second)
+//	} else if consensus_flag && !winflag {
+//		log.Println("---------------开始共识---------------")
+//		log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（90000/2000=45个）+公钥索引（45*每个分片节点数量）），生成proposal---------------")
+//		consensusstart := time.Now()
+//		// pub, _ := ioutil.ReadFile("ec-pub.pem")
+//		// 共识委员会下载交易，生成proposal
+//		Proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction, id) // 764bytes * 19
+//		time.Sleep(1 * time.Second)
+//		/* proposal签名 */
+//		// list2marshal := structure.TransactionBlock{
+//		// 	// Id:             id,
+//		// 	Height:         txlist.Height,
+//		// 	InternalList:   txlist.InternalList,
+//		// 	CrossShardList: txlist.CrossShardList,
+//		// 	SuperList:      txlist.RelayList,
+//		// }
+//		// jsonString, _ := json.Marshal(list2marshal)
+//		// hash := sha256.Sum256(jsonString)
+//		// sign := witness(hash[:], pub)
+//		// txlist.Sign = sign
+//		/* 结束 */
+//
+//		// 广播proposal
+//		request.MultiCastProposal(shard, HTTPURL, blockUploadProposal, Proposal[0], id)
+//		time.Sleep(1 * time.Second)
+//		/*
+//			应该用websocket接受广播的信息，这边直接下载代替
+//		*/
+//		Proposals := request.RequestTransaction(0, HTTPURL, blockTransaction, id) // 764bytes * 19
+//		time.Sleep(2 * time.Second)
+//
+//		log.Println("---------------获胜者下载其他相关信息，生成区块以进行BBA共识---------------")
+//		// 请求账户的状态
+//		// 和各分片树根签名 accList.GSRoot
+//		accList := request.RequestAccount(0, HTTPURL, blockAccount) // 56300bytes/100accounts
+//		time.Sleep(536 * time.Millisecond)
+//		state := structure.MakeStateWithAccount(0, accList.AccountList, accList.GSRoot)
+//		// 验证树根签名
+//		time.Sleep(time.Duration(structure.NodeNum*structure.SIGN_VERIFY_TIME*structure.ShardNum) * time.Microsecond / structure.CORE)
+//		newBlock := structure.MakeBlock(Proposals, state, Proposals[0].Height, accList.GSRoot)
+//
+//		log.Println("---------------非获胜者BBA---------------")
+//		/* 本应该是所有委员会成员上传相同的block，即request.SendVote,由服务器收集到足够多的投票数即可完成共识。（待实现）*/
+//		// 这边改成向leader投票，完成共识。
+//		RandomSleep(3000)
+//		resp := request.SendVote(shard, int(newBlock.Header.Height), winid, id, true, HTTPURL, sendtvote)
+//		log.Println(resp.Message)
+//		consensustime := time.Since(consensusstart)
+//		log.Println("---------------共识结束--------------")
+//		str := fmt.Sprintf("重分片时间:%v, consensus:%v", reShardTime, consensustime)
+//		//写入文件
+//		dstFile, err := os.OpenFile("/Users/xiading/Library/Mobile Documents/com~apple~CloudDocs/学习/中山大学/论文代码/go-project/ProposerConsensus.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+//		if err != nil {
+//			fmt.Println(err.Error())
+//			return
+//		}
+//		defer dstFile.Close()
+//		dstFile.WriteString(str + "\n")
+//		time.Sleep(2 * time.Second)
+//	}
+
+//	// rand.Seed(time.Now().UnixNano())
+//	// Random1 := rand.Intn(5000)
+//	// time.Sleep(time.Duration(Random1) * time.Millisecond)
 
 // 生成密匙对
 func generateKey(priFile, pubFile *os.File) error {

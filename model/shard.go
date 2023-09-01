@@ -16,6 +16,12 @@ type (
 		Message     []byte
 	}
 
+	// MessageReady MessageType = 0
+	MessageReady struct {
+		PersonalID string
+		IdList     []string
+	}
+
 	//MessageType = 1
 	MessageIsWin struct {
 		IsWin       bool
