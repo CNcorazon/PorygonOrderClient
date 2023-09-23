@@ -34,17 +34,17 @@ var PubKey *ecdsa.PublicKey
 func init() {
 
 	// 初始化生成私匙公匙
-	priFile, _ := os.Create("ec-pri.pem")
-	pubFile, _ := os.Create("ec-pub.pem")
-	if err := generateKey(priFile, pubFile); err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-	// 加载私匙公匙
-	if err := loadKey(); err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
+	//priFile, _ := os.Create("ec-pri.pem")
+	//pubFile, _ := os.Create("ec-pub.pem")
+	//if err := generateKey(priFile, pubFile); err != nil {
+	//	log.Println(err)
+	//	os.Exit(1)
+	//}
+	//// 加载私匙公匙
+	//if err := loadKey(); err != nil {
+	//	log.Println(err)
+	//	os.Exit(1)
+	//}
 }
 
 const (
@@ -52,10 +52,11 @@ const (
 	WSURL   = "ws://127.0.0.1:8088"
 	// HTTPURL           = "http://172.18.166.60:8800"
 	// WSURL             = "ws://http://172.18.166.60:8800"
-	blockTransaction    = "/block/transaction"
-	blockAccount        = "/block/account"
-	blockUploadProposal = "/block/uploadproposal"
-	blockUploadLeader   = "/block/uploadleader"
+	blockTransaction      = "/block/transaction"
+	blockAccount          = "/block/account"
+	blockUploadProposal   = "/block/uploadproposal"
+	blockUploadLeader     = "/block/uploadleader"
+	blockGetProposalBlock = "/block/proposalBlock"
 	// blockWitness      = "/block/witness"
 	// blockWitness_2    = "/block/witness_2"
 	// blockTxValidation = "/block/validate"
@@ -80,7 +81,7 @@ func main() {
 	for {
 		heightNew = request.HeightRequest(HTTPURL, heightNum)
 		if heightNew == heightOld && heightNew != 0 {
-			log.Println(heightNew, heightOld)
+			//log.Println(heightNew, heightOld)
 			continue
 		}
 		log.Printf("申请加入系统")
@@ -93,7 +94,6 @@ func main() {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-
 		if !flag1 {
 			log.Printf("当前没有分片需要节点")
 			time.Sleep(1 * time.Second)
@@ -119,11 +119,13 @@ func main() {
 			proBlockList []structure.ProposalBlock
 		)
 		for {
+			log.Printf("%v在等待消息,已收到%v个proposalblock", id, len(proBlockList))
 			err := conn.ReadJSON(&metaMessage)
 			if err != nil {
 				fmt.Println(err)
 				break
 			}
+			//log.Printf("%v接收到了消息，类型为%v", id, metaMessage.MessageType)
 
 			if metaMessage.MessageType == 0 {
 				var idMsg model.MessageReady
@@ -136,27 +138,20 @@ func main() {
 				idList = idMsg.IdList
 				shard := uint(0)
 				log.Println("---------------开始共识---------------")
-				log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（40000/2000 * SHARDNUM =200个）+公钥索引（每个分片节点数量*shardnum）），生成proposal---------------")
+				log.Println("---------------开始下载已见证过的交易列表，生成proposal---------------")
+				//（2000个交易1个batch，使用聚合签名（40000/2000 * SHARDNUM =200个）+公钥索引（每个分片节点数量*shardnum））
 				// pub, _ := ioutil.ReadFile("ec-pub.pem")
 				// 共识委员会下载交易，生成proposal
 				proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction) // 764bytes * 19
 				accList := request.RequestAccount(shard, HTTPURL, blockAccount)          // 56300bytes/100accounts
-				/* 附上其他信息*/
-				Random := rand.Intn(100000)
-				proposalBlock := structure.ProposalBlock{
-					Id:     id,
-					IdList: idList,
-					Height: int(proposal[0].Height),
-					//Hash: ,
-					Vrf:          Random,
-					Root:         accList.GSRoot,
-					ProposalList: proposal,
-				}
-				/* 结束 */
+
+				proposalBlock := currencyControl(id, idList, proposal, accList)
+
 				request.MultiCastProposal(HTTPURL, blockUploadProposal, proposalBlock)
 			}
 			if metaMessage.MessageType == 11 {
 				var proBlock structure.ProposalBlock
+				log.Println(len(metaMessage.Message))
 				err := json.Unmarshal(metaMessage.Message, &proBlock)
 				if err != nil {
 					log.Printf("err")
@@ -176,130 +171,9 @@ func main() {
 		if err != nil {
 			continue
 		}
-
-		//time.Sleep(1 * time.Second)
+		//time.Sleep(3 * time.Second)
 	}
 }
-
-// 进行区块共识
-//	if consensus_flag && winflag {
-//		log.Println("---------------开始共识---------------")
-//		log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（40000/2000 * SHARDNUM =200个）+公钥索引（每个分片节点数量*shardnum）），生成proposal---------------")
-//		consensusstart := time.Now()
-//		// pub, _ := ioutil.ReadFile("ec-pub.pem")
-//		// 共识委员会下载交易，生成proposal
-//		Proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction, id) // 764bytes * 19
-//		time.Sleep(1 * time.Second)
-//		/* proposal签名 */
-//
-//		/* 结束 */
-//
-//		// 广播proposal
-//		request.MultiCastProposal(shard, HTTPURL, blockUploadProposal, Proposal[0], id)
-//		time.Sleep(1 * time.Second)
-//		/*
-//			应该用websocket接受广播的信息，这边直接下载代替
-//		*/
-//		Proposals := request.RequestTransaction(0, HTTPURL, blockTransaction, id) // 764bytes * 19
-//		time.Sleep(2 * time.Second)
-//
-//		log.Println("---------------获胜者下载其他相关信息，生成区块以进行BBA共识---------------")
-//		// 请求账户的状态
-//		// 和各分片树根签名 accList.GSRoot
-//		accList := request.RequestAccount(0, HTTPURL, blockAccount) // 56300bytes/100accounts
-//		time.Sleep(536 * time.Millisecond)
-//		state := structure.MakeStateWithAccount(0, accList.AccountList, accList.GSRoot)
-//		// 验证树根签名
-//		time.Sleep(time.Duration(structure.NodeNum*structure.SIGN_VERIFY_TIME*structure.ShardNum) * time.Microsecond / structure.CORE)
-//newBlock := structure.MakeBlock(Proposals, state, Proposals[0].Height, accList.GSRoot)
-//
-//		log.Println("---------------获胜者BBA---------------")
-//		/* 本应该是所有委员会成员上传相同的block，即request.SendVote,由服务器收集到足够多的投票数即可完成共识。（待实现）*/
-//		// 这边改成由leader收集投票，上传最终的block，完成共识。
-//		blockPointer := &newBlock
-//		// 用这个模拟收集投票的过程
-//		RandomSleep(3000)
-//		blockPointer.Header.Vote = blockPointer.Header.Vote + uint(structure.ProposerNum) - 1
-//		finalBlock := *blockPointer
-//		res1 := request.UploadBlock(0, finalBlock, winid, HTTPURL, blockUpload) //1136bytes
-//		time.Sleep(1 * time.Millisecond)
-//		consensustime := time.Since(consensusstart)
-//		log.Println("---------------共识结束--------------")
-//		log.Printf("分片%v%v,当前链的高度为%v", res1.Shard, res1.Message, res1.Height)
-//		str := fmt.Sprintf("重分片时间:%v,consensus:%v", reShardTime, consensustime)
-//		//写入文件
-//		dstFile, err := os.OpenFile("/Users/xiading/Library/Mobile Documents/com~apple~CloudDocs/学习/中山大学/论文代码/go-project/WinnerConsensus.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-//		if err != nil {
-//			fmt.Println(err.Error())
-//			return
-//		}
-//		defer dstFile.Close()
-//		dstFile.WriteString(str + "\n")
-//		time.Sleep(2 * time.Second)
-//	} else if consensus_flag && !winflag {
-//		log.Println("---------------开始共识---------------")
-//		log.Println("---------------开始下载已见证过的交易列表（2000个交易1个batch，使用聚合签名（90000/2000=45个）+公钥索引（45*每个分片节点数量）），生成proposal---------------")
-//		consensusstart := time.Now()
-//		// pub, _ := ioutil.ReadFile("ec-pub.pem")
-//		// 共识委员会下载交易，生成proposal
-//		Proposal := request.RequestTransaction(shard, HTTPURL, blockTransaction, id) // 764bytes * 19
-//		time.Sleep(1 * time.Second)
-//		/* proposal签名 */
-//		// list2marshal := structure.TransactionBlock{
-//		// 	// Id:             id,
-//		// 	Height:         txlist.Height,
-//		// 	InternalList:   txlist.InternalList,
-//		// 	CrossShardList: txlist.CrossShardList,
-//		// 	SuperList:      txlist.RelayList,
-//		// }
-//		// jsonString, _ := json.Marshal(list2marshal)
-//		// hash := sha256.Sum256(jsonString)
-//		// sign := witness(hash[:], pub)
-//		// txlist.Sign = sign
-//		/* 结束 */
-//
-//		// 广播proposal
-//		request.MultiCastProposal(shard, HTTPURL, blockUploadProposal, Proposal[0], id)
-//		time.Sleep(1 * time.Second)
-//		/*
-//			应该用websocket接受广播的信息，这边直接下载代替
-//		*/
-//		Proposals := request.RequestTransaction(0, HTTPURL, blockTransaction, id) // 764bytes * 19
-//		time.Sleep(2 * time.Second)
-//
-//		log.Println("---------------获胜者下载其他相关信息，生成区块以进行BBA共识---------------")
-//		// 请求账户的状态
-//		// 和各分片树根签名 accList.GSRoot
-//		accList := request.RequestAccount(0, HTTPURL, blockAccount) // 56300bytes/100accounts
-//		time.Sleep(536 * time.Millisecond)
-//		state := structure.MakeStateWithAccount(0, accList.AccountList, accList.GSRoot)
-//		// 验证树根签名
-//		time.Sleep(time.Duration(structure.NodeNum*structure.SIGN_VERIFY_TIME*structure.ShardNum) * time.Microsecond / structure.CORE)
-//		newBlock := structure.MakeBlock(Proposals, state, Proposals[0].Height, accList.GSRoot)
-//
-//		log.Println("---------------非获胜者BBA---------------")
-//		/* 本应该是所有委员会成员上传相同的block，即request.SendVote,由服务器收集到足够多的投票数即可完成共识。（待实现）*/
-//		// 这边改成向leader投票，完成共识。
-//		RandomSleep(3000)
-//		resp := request.SendVote(shard, int(newBlock.Header.Height), winid, id, true, HTTPURL, sendtvote)
-//		log.Println(resp.Message)
-//		consensustime := time.Since(consensusstart)
-//		log.Println("---------------共识结束--------------")
-//		str := fmt.Sprintf("重分片时间:%v, consensus:%v", reShardTime, consensustime)
-//		//写入文件
-//		dstFile, err := os.OpenFile("/Users/xiading/Library/Mobile Documents/com~apple~CloudDocs/学习/中山大学/论文代码/go-project/ProposerConsensus.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-//		if err != nil {
-//			fmt.Println(err.Error())
-//			return
-//		}
-//		defer dstFile.Close()
-//		dstFile.WriteString(str + "\n")
-//		time.Sleep(2 * time.Second)
-//	}
-
-//	// rand.Seed(time.Now().UnixNano())
-//	// Random1 := rand.Intn(5000)
-//	// time.Sleep(time.Duration(Random1) * time.Millisecond)
 
 // 生成密匙对
 func generateKey(priFile, pubFile *os.File) error {
@@ -364,17 +238,33 @@ func loadKey() error {
 	var err error
 	// 反序列化私匙
 	// PriKey.X.MarshalJSON()
-	PriKey, err = x509.ParseECPrivateKey(block.Bytes)
-	if err != nil {
-		return err
+	if block.Bytes != nil && len(block.Bytes) > 0 {
+		// 切片不为空且长度大于零
+		PriKey, err = x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			return err
+		}
+	} else {
+		// 切片为空或长度为零
+		// 执行相应的错误处理逻辑
+		fmt.Println("block.Bytes is nil or empty")
+		return nil
 	}
+
 	// 解码公匙
 	block, _ = pem.Decode(pub)
 	// 反序列化公匙
 	var i interface{}
-	i, err = x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return err
+	if block.Bytes != nil && len(block.Bytes) > 0 {
+		i, err = x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return err
+		}
+	} else {
+		// 切片为空或长度为零
+		// 执行相应的错误处理逻辑
+		fmt.Println("block.Bytes is nil or empty")
+		return nil
 	}
 	// PubKey = (*ecdsa.PublicKey)(i)
 	var ok bool
@@ -385,171 +275,112 @@ func loadKey() error {
 	return nil
 }
 
-// func witness(context []byte, pub []byte) structure.PubKeySign {
-// 	r, s, err := ecdsa.Sign(strings.NewReader(randSign), PriKey, context)
-// 	if err != nil {
-// 		log.Println(err)
-// 		os.Exit(1)
-// 	}
-
-// 	r_byte, _ := r.MarshalJSON()
-// 	s_byte, _ := s.MarshalJSON()
-// 	sign := structure.PubKeySign{
-// 		R: string(r_byte),
-// 		S: string(s_byte),
-// 	}
-
-// 	return sign
-// }
-
 func RandomSleep(n int) {
 	rand.Seed(time.Now().UnixNano())
 	Random1 := rand.Intn(n)
 	time.Sleep(time.Duration(Random1) * time.Millisecond)
 }
 
-// //等待一段时间获取投票结果
-// voteMap := make(map[string]bool) //记录最终的投票结果
-// var wg sync.WaitGroup
-// lock := new(sync.Mutex)
-// //等待所有的投票结果
-// // log.Println(len(conn1))
-// metaMessage := make([]model.MessageMetaData, len(conn1))
-// //读的时候要读来自除去iswin.shard之外所有分片的数据
-// for i := 0; i < len(conn1); i++ {
-// 	wg.Add(1)
-// 	go func(j int) {
-// 		//试试用gofunc()
-// 		log.Printf("im here")
-// 		conn1[j].ReadJSON(&metaMessage[j])
-// 		log.Println("123412123")
-// 		// conn.ReadJSON(&metaMessage)
-// 		// log.Println(metaMessage.MessageType)
-// 		if metaMessage[j].MessageType == 3 {
-// 			logger.BandWidthLogger.Println(len(metamessage.Message))
-// 			var vote model.SendVoteRequest
-// 			err := json.Unmarshal(metaMessage[j].Message, &vote)
-// 			if err != nil {
-// 				log.Println(err)
-// 				return
-// 			}
-// 			lock.Lock()
-// 			log.Println("锁了")
-// 			voteMap[vote.PersonalID] = vote.Agree
-// 			if vote.Agree {
-// 				log.Printf("区块获得了来自%v节点的投票", vote.PersonalID)
-// 			}
-// 			lock.Unlock()
-// 			log.Println("解锁了")
-// 		}
-// 		defer wg.Done()
-// 	}(i)
-// }
-// wg.Wait()
-//最终根据投票结果更新区块接收到的票数目
-// for _, value := range voteMap {
-// 	if value {
-// 		blockPointer.Header.Vote++
-// 	}
-// }
-// MuiltiCastTime := time.Since(time5)
-// time6 := time.Now()
-//最后提交区块
+func currencyControl(id string, idList []string, proposals []structure.Proposal, accList model.BlockAccountResponse) structure.ProposalBlock {
+	Random := rand.Intn(100000)
+	lockedAccounts := getLockedAccountUnion()
+	fmt.Println("涉及到的所有账户：")
+	proposalBlock := structure.ProposalBlock{
+		Id:            id,
+		IdList:        idList,
+		Height:        int(proposals[0].Height),
+		LockedAccount: lockedAccounts,
+		Vrf:           Random,
+		Root:          accList.GSRoot,
+		ProposalList:  proposals,
+	}
+	return proposalBlock
+}
 
-// //给proposal投票
-// var metaMessage model.MessageMetaData
-// conn.ReadJSON(&metaMessage)
-// if metaMessage.MessageType == 2 {
-// fmt.Printf("iam here13.0")
-// var blockMessage model.MultiCastBlockRequest
-// json.Unmarshal(metaMessage.Message, &blockMessage)
-// logger.BandWidthLogger.Println(int(unsafe.Sizeof(metaMessage.MessageType)) + len(metaMessage.Message))
-//验证收到的Leader执行生成的区块是否正确
-// log.Println(blockMessage.Block.Header.StateRoot.StateRoot)
-// log.Println(accList)
-// flag := structure.CompareBlocks(blockMessage.Block, newBlock2)
-//进行投票
+func getLockedAccountUnion() []int {
+	//// 使用 map 来确保结果中的 Id 是唯一的
+	uniqueIds0 := make(map[int]struct{})
+	uniqueIds1 := make(map[int]struct{})
+	uniqueIds2 := make(map[int]struct{})
 
-//验证交易列表的签名，即其他移动节点的签名，表示大家都能下载到这些交易
-/* 验证签名 */
-// TxRoot := make(map[uint]string)
-// r := new(big.Int)
-// s := new(big.Int)
-// for i := 1; i <= structure.ShardNum; i++ {
-// 	TxlistCount := make(map[string]int)
-// 	for index, PubSign := range TransactionList.Signsmap[uint(i)] {
-// 		// 解码公钥
-// 		// block := pem.Block{}
-// 		// log.Println(PubSign.Pub)
-// 		block, _ := pem.Decode(pub)
-// 		// 反序列化公钥
-// 		var xyz interface{}
-// 		var err error
-// 		// log.Println(block.Type)
-// 		xyz, err = x509.ParsePKIXPublicKey(block.Bytes)
-// 	if err != nil {
-// 		log.Printf("反序列化公钥失败:%v", err)
-// 	}
-// 	PubKey, _ = xyz.(*ecdsa.PublicKey)
-// 	hash, err := hex.DecodeString(TransactionList.RootString[uint(i)][uint(index)])
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return
-// 	}
-// 	json.Unmarshal([]byte(PubSign.R), &r)
-// 	json.Unmarshal([]byte(PubSign.S), &s)
-// 	if ecdsa.Verify(PubKey, hash, r, s) {
-// 		TxlistCount[TransactionList.RootString[uint(i)][uint(index)]] += 1
-// 		log.Printf("验证成功，交易列表hash为：%v", TxlistCount)
-// 		// log.Printf("Root:%v,\npub:%v,\nR:%v,\nS:%v\n", TransactionList.RootString[uint(i)][uint(index)], , PubSign.R, PubSign.S)
-// 	} else {
-// 		log.Printf("验证失败，相关信息如下")
-// 		log.Printf("Root:%v,\nR:%v,\nS:%v\n", TransactionList.RootString[uint(i)][uint(index)], PubSign.R, PubSign.S)
-// 	}
-// }
-// for rootstring, count := range TxlistCount {
-// 	if count >= 2*(structure.CLIENT_MAX-structure.ProposerNum)/3 {
-// 		TxRoot[uint(i)] = rootstring
-// 		break
-// 	}
-// }
-// }
-// 下载一个proposal+验证签名的时间,这边直接sleep过去其他proposal的时间
-// DownloadTxlistTime := time.Since(consensusstart)
-// time.Sleep(DownloadTxlistTime * (structure.ProposerNum/2 - 1))
+	req := model.GetProposalRequest{
+		Height:   request.HeightRequest(HTTPURL, heightNum),
+		Identity: "order",
+	}
+	res := request.GetProposalBlock(HTTPURL, blockGetProposalBlock, req)
+	log.Println("proposalblock个数：", len(res.ProposalBlocks))
+	proposals1 := make([]structure.Proposal, 0)
+	proposals2 := make([]structure.Proposal, 0)
+	proposals3 := make([]structure.Proposal, 0)
 
-/* 验证签名 */
-// TxRoot := make(map[uint]string)
-// r := new(big.Int)
-// s := new(big.Int)
-// for i := 1; i <= structure.ShardNum; i++ {
-// 	TxlistCount := make(map[string]int)
-// 	for index, PubSign := range TransactionList.Signsmap[uint(i)] {
-// 		// 解码公钥
-// 		// block := new(pem.Block)
-// 		block, _ := pem.Decode(pub)
-// 		// 反序列化公钥
-// 		var j interface{}
-// 		j, err := x509.ParsePKIXPublicKey(block.Bytes)
-// 		if err != nil {
-// 			log.Printf("反序列化公钥失败")
-// 		}
-// 		PubKey1, _ := j.(*ecdsa.PublicKey)
-// 		hash, err := hex.DecodeString(TransactionList.RootString[uint(i)][uint(index)])
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			return
-// 		}
-// 		json.Unmarshal([]byte(PubSign.R), &r)
-// 		json.Unmarshal([]byte(PubSign.S), &s)
-// 		if ecdsa.Verify(PubKey1, hash, r, s) {
-// 			TxlistCount[TransactionList.RootString[uint(i)][uint(index)]] += 1
-// 		}
-// 	}
-// 	for rootstring, count := range TxlistCount {
-// 		if count >= 2*(structure.CLIENT_MAX-structure.ProposerNum)/3 {
-// 			TxRoot[uint(i)] = rootstring
-// 			break
-// 		}
-// 	}
-// }
+	if len(res.ProposalBlocks) == 3 {
+		proposals1 = res.ProposalBlocks[2].Body.TransactionLists
+		proposals2 = res.ProposalBlocks[1].Body.TransactionLists
+		proposals3 = res.ProposalBlocks[0].Body.TransactionLists
+	} else if len(res.ProposalBlocks) == 2 {
+		proposals1 = res.ProposalBlocks[1].Body.TransactionLists
+		proposals2 = res.ProposalBlocks[0].Body.TransactionLists
+	} else if len(res.ProposalBlocks) == 1 {
+		proposals1 = res.ProposalBlocks[0].Body.TransactionLists
+	}
+
+	// 前第一个区块中涉及的所有账户From和To都是禁止访问状态
+	// 前第二、三个区块中superTransaction涉及的To账户是禁止访问状态
+	for _, proposal := range proposals1 {
+		accountId := getRelatedAccount(proposal)
+		for _, InterAccountId := range accountId[0] {
+			uniqueIds0[InterAccountId] = struct{}{}
+		}
+		for _, CrossAccountId := range accountId[1] {
+			uniqueIds1[CrossAccountId] = struct{}{}
+		}
+		for _, SuperAccountId := range accountId[2] {
+			uniqueIds2[SuperAccountId] = struct{}{}
+		}
+	}
+	for _, proposal := range proposals2 {
+		accountId := getRelatedAccount(proposal)
+		for _, SuperAccountId := range accountId[2] {
+			uniqueIds2[SuperAccountId] = struct{}{}
+		}
+	}
+	for _, proposal := range proposals3 {
+		accountId := getRelatedAccount(proposal)
+		for _, SuperAccountId := range accountId[2] {
+			uniqueIds2[SuperAccountId] = struct{}{}
+		}
+	}
+	// 将唯一的 Id 放入结果切片中
+	var accountIds []int
+	for id := range uniqueIds0 {
+		accountIds = append(accountIds, id)
+	}
+	for id := range uniqueIds1 {
+		accountIds = append(accountIds, id)
+	}
+	for id := range uniqueIds2 {
+		accountIds = append(accountIds, id)
+	}
+	return accountIds
+}
+
+func getRelatedAccount(proposal structure.Proposal) [][]int {
+	var accountIds [][]int
+	for len(accountIds) <= 3 {
+		accountIds = append(accountIds, make([]int, 0))
+	}
+
+	for _, ib := range proposal.InternalBatch {
+		accountIds[0] = append(accountIds[0], ib.RelatedAccount...)
+	}
+
+	for _, cb := range proposal.CrossBatch {
+		accountIds[1] = append(accountIds[1], cb.RelatedAccount...)
+	}
+
+	for _, cb := range proposal.SuperBatch {
+		accountIds[2] = append(accountIds[2], cb.RelatedAccount...)
+	}
+
+	return accountIds
+}

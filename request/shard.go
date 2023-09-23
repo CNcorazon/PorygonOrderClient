@@ -16,7 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ShardRequest 返回值分别表示本次被分配到的分片，以及Ws连接是否成功，还有HTTP连接是否成功
+// ShardRequest 返回值分别表示本次被分配到的分片，系统中节点是否已满，HTTP连接是否成功
 func ShardRequest(httpUrl string, route string) (uint, bool, bool) {
 	URL := httpUrl + route
 	request, _ := http.NewRequest("GET", URL, nil)
@@ -33,12 +33,9 @@ func ShardRequest(httpUrl string, route string) (uint, bool, bool) {
 		return 0, false, false
 	}
 	shardNum := res.ShardNum
-	if shardNum == 0 {
-		return shardNum, false, true
-	}
+
 	return shardNum, true, true
 }
-
 func HeightRequest(httpUrl string, route string) int {
 	// strShard := strconv.Itoa(int(shardnum))
 	URL := httpUrl + route

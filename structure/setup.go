@@ -6,18 +6,17 @@ import (
 )
 
 const ShardNum1 = 2
-const AccountNum = 40000
+const AccountNum = 500
 const ProposerNum1 = 10
 const CLIENT_MAX = 10
 const SIGN_VERIFY_TIME = 300 //microsecond
-const TX_NUM1 = 2000         //per shard per catagory
+const TX_NUM1 = 20           //per shard per catagory
 const CORE = 1
 const NodeNum1 = ShardNum1 * CLIENT_MAX
 
 var ShardNum int
 var ProposerNum int
 var TX_NUM int
-var NodeNum int
 
 func init() {
 	ShardNum = ShardNum1
@@ -42,6 +41,4 @@ func init() {
 			// log.Println(TX_NUM)
 		}
 	}
-
-	NodeNum = ShardNum * CLIENT_MAX
 }

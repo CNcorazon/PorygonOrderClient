@@ -18,20 +18,29 @@ type (
 	Proposal struct {
 		Shard         uint
 		Height        uint
-		InternalBatch []TransactionBatch
-		CrossBatch    []TransactionBatch
-		SuperBatch    []TransactionBatch
+		InternalBatch []Batchtrans
+		CrossBatch    []Batchtrans
+		SuperBatch    []Batchtrans
 	}
-
+	Batchtrans struct {
+		Id             int
+		Shard          int
+		Abstract       string
+		RelatedAccount []int // 第一维是内部交易的，第二维是跨分片from方的，第三维是跨分片to方的
+		PubIndex       []int
+		Sig            string
+		TransType      int
+	}
 	// ProposalBlock 共识阶段：排序委员会提出的proposal block
 	ProposalBlock struct {
-		Id           string
-		IdList       []string
-		Height       int
-		Hash         string     //前一个区块的hash
-		Root         GSRoot     //状态树树根
-		ProposalList []Proposal //交易列表
-		Vrf          int        //vrf
+		Id            string
+		IdList        []string
+		LockedAccount []int
+		Height        int
+		Hash          string     //前一个区块的hash
+		Root          GSRoot     //状态树树根
+		ProposalList  []Proposal //交易列表
+		Vrf           int        //vrf
 	}
 
 	Root        string
